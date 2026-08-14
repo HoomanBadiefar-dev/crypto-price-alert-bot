@@ -33,4 +33,5 @@ jobs:
           git config user.email "github-actions@github.com"
           git add alerts.json state.json
           git diff --quiet && git diff --staged --quiet || git commit -m "update alerts/state"
+          git pull --rebase
           git push
