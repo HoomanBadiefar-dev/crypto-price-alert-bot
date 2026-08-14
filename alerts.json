@@ -11,6 +11,6 @@
     "coin_id": "ethereum",
     "target_price": 3000,
     "direction": "below",
-    "triggered": false
+    "triggered": true
   }
 ]
