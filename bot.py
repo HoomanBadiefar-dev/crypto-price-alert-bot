@@ -1,10 +1,12 @@
 """
 ربات هشدار قیمت کریپتو
+- دستورات تلگرامی مثل /alert BTC 70000 رو می‌خونه و هشدار جدید اضافه می‌کنه
 - قیمت‌ها رو از CoinGecko می‌گیره
 - با هشدارهای ذخیره‌شده در alerts.json مقایسه می‌کنه
 - اگه هشداری فعال بشه، پیام تلگرام می‌فرسته و اون هشدار رو غیرفعال می‌کنه
 
-این اسکریپت برای اجرا با GitHub Actions طراحی شده (هر بار از صفر اجرا می‌شه، حافظه نداره).
+این اسکریپت برای اجرا با GitHub Actions طراحی شده (هر بار از صفر اجرا می‌شه، حافظه نداره،
+به همین خاطر last_update_id و alerts.json رو خودش روی دیسک/ریپو نگه می‌داره).
 """
 
 import json
@@ -13,9 +15,9 @@ import sys
 import requests
 
 ALERTS_FILE = "alerts.json"
+STATE_FILE = "state.json"
 
 # نگاشت نمادهای رایج به شناسه CoinGecko
-# می‌تونی بعداً موارد بیشتری اضافه کنی
 SYMBOL_TO_ID = {
     "BTC": "bitcoin",
     "ETH": "ethereum",
@@ -35,16 +37,16 @@ SYMBOL_TO_ID = {
 }
 
 
-def load_alerts():
-    if not os.path.exists(ALERTS_FILE):
-        return []
-    with open(ALERTS_FILE, "r", encoding="utf-8") as f:
+def load_json(path, default):
+    if not os.path.exists(path):
+        return default
+    with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
-def save_alerts(alerts):
-    with open(ALERTS_FILE, "w", encoding="utf-8") as f:
-        json.dump(alerts, f, ensure_ascii=False, indent=2)
+def save_json(path, data):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 def fetch_prices(coin_ids):
@@ -63,19 +65,91 @@ def send_telegram_message(bot_token, chat_id, text):
     resp.raise_for_status()
 
 
-def main():
-    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+def get_updates(bot_token, offset):
+    url = f"https://api.telegram.org/bot{bot_token}/getUpdates"
+    params = {"offset": offset, "timeout": 0}
+    resp = requests.get(url, params=params, timeout=15)
+    resp.raise_for_status()
+    return resp.json().get("result", [])
 
-    if not bot_token or not chat_id:
-        print("خطا: TELEGRAM_BOT_TOKEN یا TELEGRAM_CHAT_ID تنظیم نشده.")
-        sys.exit(1)
 
-    alerts = load_alerts()
-    if not alerts:
-        print("هیچ هشدار فعالی وجود نداره.")
-        return
+def parse_alert_command(text):
+    # فرمت مورد انتظار: /alert BTC 70000
+    parts = text.strip().split()
+    if len(parts) != 3:
+        return None, "فرمت درست: /alert SYMBOL PRICE   مثل: /alert BTC 70000"
 
+    _, symbol, price_str = parts
+    symbol = symbol.upper()
+
+    if symbol not in SYMBOL_TO_ID:
+        supported = ", ".join(sorted(SYMBOL_TO_ID.keys()))
+        return None, f"نماد {symbol} پشتیبانی نمی‌شه. نمادهای موجود: {supported}"
+
+    try:
+        target_price = float(price_str)
+    except ValueError:
+        return None, "قیمت باید عدد باشه. مثل: /alert BTC 70000"
+
+    return {"symbol": symbol, "coin_id": SYMBOL_TO_ID[symbol], "target_price": target_price}, None
+
+
+def process_incoming_commands(bot_token, chat_id, state, alerts):
+    updates = get_updates(bot_token, state.get("last_update_id", 0) + 1)
+    if not updates:
+        return alerts, state, False
+
+    changed = False
+    max_update_id = state.get("last_update_id", 0)
+
+    for update in updates:
+        max_update_id = max(max_update_id, update.get("update_id", 0))
+        message = update.get("message") or {}
+        text = message.get("text", "")
+
+        if not text.lower().startswith("/alert"):
+            continue
+
+        alert_data, error = parse_alert_command(text)
+
+        if error:
+            send_telegram_message(bot_token, chat_id, f"⚠️ {error}")
+            continue
+
+        # قیمت فعلی رو می‌گیریم تا جهت هشدار (بالا/پایین) رو خودکار تشخیص بدیم
+        current_prices = fetch_prices([alert_data["coin_id"]])
+        current = current_prices.get(alert_data["coin_id"], {}).get("usd")
+
+        if current is None:
+            send_telegram_message(bot_token, chat_id, "⚠️ نتونستم قیمت فعلی رو بگیرم، دوباره امتحان کن.")
+            continue
+
+        direction = "above" if alert_data["target_price"] > current else "below"
+
+        new_alert = {
+            "symbol": alert_data["symbol"],
+            "coin_id": alert_data["coin_id"],
+            "target_price": alert_data["target_price"],
+            "direction": direction,
+            "triggered": False,
+        }
+        alerts.append(new_alert)
+        changed = True
+
+        direction_fa = "بالاتر بره" if direction == "above" else "پایین‌تر بیاد"
+        send_telegram_message(
+            bot_token,
+            chat_id,
+            f"✅ هشدار ثبت شد\n"
+            f"{alert_data['symbol']} — وقتی قیمت {direction_fa} از {alert_data['target_price']:,.4f}$\n"
+            f"(قیمت فعلی: {current:,.4f}$)",
+        )
+
+    state["last_update_id"] = max_update_id
+    return alerts, state, changed
+
+
+def check_alerts(bot_token, chat_id, alerts):
     coin_ids = list({a["coin_id"] for a in alerts if not a.get("triggered")})
     prices = fetch_prices(coin_ids)
 
@@ -86,7 +160,7 @@ def main():
 
         coin_id = alert["coin_id"]
         target = alert["target_price"]
-        direction = alert["direction"]  # "above" یا "below"
+        direction = alert["direction"]
 
         current = prices.get(coin_id, {}).get("usd")
         if current is None:
@@ -108,8 +182,27 @@ def main():
             changed = True
             print(f"هشدار ارسال شد: {symbol}")
 
-    if changed:
-        save_alerts(alerts)
+    return alerts, changed
+
+
+def main():
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+
+    if not bot_token or not chat_id:
+        print("خطا: TELEGRAM_BOT_TOKEN یا TELEGRAM_CHAT_ID تنظیم نشده.")
+        sys.exit(1)
+
+    alerts = load_json(ALERTS_FILE, [])
+    state = load_json(STATE_FILE, {"last_update_id": 0})
+
+    alerts, state, commands_changed = process_incoming_commands(bot_token, chat_id, state, alerts)
+    save_json(STATE_FILE, state)
+
+    alerts, prices_changed = check_alerts(bot_token, chat_id, alerts)
+
+    if commands_changed or prices_changed:
+        save_json(ALERTS_FILE, alerts)
 
 
 if __name__ == "__main__":
