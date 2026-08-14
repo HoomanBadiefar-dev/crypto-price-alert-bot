@@ -1,0 +1,16 @@
+[
+  {
+    "symbol": "BTC",
+    "coin_id": "bitcoin",
+    "target_price": 65000,
+    "direction": "above",
+    "triggered": false
+  },
+  {
+    "symbol": "ETH",
+    "coin_id": "ethereum",
+    "target_price": 3000,
+    "direction": "below",
+    "triggered": false
+  }
+]
