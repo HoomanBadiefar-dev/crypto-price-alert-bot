@@ -12,5 +12,12 @@
     "target_price": 3000,
     "direction": "below",
     "triggered": true
+  },
+  {
+    "symbol": "BTC",
+    "coin_id": "bitcoin",
+    "target_price": 70000.0,
+    "direction": "above",
+    "triggered": false
   }
 ]
