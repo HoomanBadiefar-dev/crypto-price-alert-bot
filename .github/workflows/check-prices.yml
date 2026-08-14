@@ -27,10 +27,10 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python bot.py
 
-      - name: Commit updated alerts file
+      - name: Commit updated alerts and state files
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add alerts.json
-          git diff --quiet && git diff --staged --quiet || git commit -m "update alerts"
+          git add alerts.json state.json
+          git diff --quiet && git diff --staged --quiet || git commit -m "update alerts/state"
           git push
