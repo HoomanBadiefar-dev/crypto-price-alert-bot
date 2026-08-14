@@ -19,5 +19,12 @@
     "target_price": 70000.0,
     "direction": "above",
     "triggered": false
+  },
+  {
+    "symbol": "ETH",
+    "coin_id": "ethereum",
+    "target_price": 1900.0,
+    "direction": "above",
+    "triggered": false
   }
 ]
