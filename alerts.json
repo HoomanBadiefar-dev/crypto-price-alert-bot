@@ -26,5 +26,12 @@
     "target_price": 1900.0,
     "direction": "above",
     "triggered": false
+  },
+  {
+    "symbol": "BNB",
+    "coin_id": "binancecoin",
+    "target_price": 500.0,
+    "direction": "below",
+    "triggered": false
   }
 ]
