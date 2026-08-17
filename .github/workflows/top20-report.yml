@@ -1,0 +1,28 @@
+name: Top 20 Crypto Report
+
+on:
+  schedule:
+    # هر 4 ساعت یک‌بار اجرا می‌شه
+    - cron: "0 */4 * * *"
+  workflow_dispatch: {}   # اجازه‌ی اجرای دستی از تب Actions
+
+jobs:
+  top20-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run top 20 report
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python top20_report.py
