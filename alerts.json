@@ -4,7 +4,7 @@
     "coin_id": "bitcoin",
     "target_price": 65000,
     "direction": "above",
-    "triggered": false
+    "triggered": true
   },
   {
     "symbol": "ETH",
